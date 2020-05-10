@@ -10,6 +10,56 @@
 
 第二个选择是，编译llvm工程，替换掉NDK中原先的toolchain，并且在相同环境下，移植 ollvm或 hikari为独立的plugin，（移植方案我的github里有写https://github.com/LeadroyaL/llvm-pass-tutorial）用编译为插件的形式，动态加载插件。
 
+相比第一个方案，极大降低维护的代价，只编译一个pass即可，但仍然对NDK有侵入性。
+
+这两种方案的共同特点是：都需要编译整个llvm项目，初次部署时要消耗大量的时间和资源，另外在选择llvm版本时，也会纠结适配性的问题（虽然通常不会出现适配问题）
+
+笔者曾经使用的是第二种方案，经过研究，本文提出第三种方案，使用NDK中的环境编译pass并加载pass，优雅程度上来看，有以下的特点：
+
+最最重要的，不需要编译llvm项目，节省巨大的时间和资源消耗；
+其次，不修改原先的NDK运行环境，和原生的NDK是最像的，没有侵入性；
+再次，上下文均和NDK完全一致，不需要担心符号问题，不需要额外安装软件和环境，有NDK的环境就足矣；
+
+
+使用NDK的环境编译一个pass
+众所周知，编译Pass时需要使用 llvm的环境，由于NDK中的 llvm环境是破损的，所以开发者一般自己编译一份 llvm环境出来，替换掉NDK中的llvm环境，包括我本人之前也是这样处理的，这样做的原因是NDK中的 llvm是破损的，因为NDK来自AOSP编译好的 toolchain，而AOSP在制作 toolchain的过程中是移除了部分文件的。
+
+上文提到，本文的方案是不需要亲自编译llvm的，因此就需要使用NDK中的破损的llvm环境来编译一个pass。
+
+根据对 https://android.googlesource.com/toolchain/llvm_android/ 的阅读和调试，NDK中的llvm缺失的是一部分binary文件、全部静态链接库文件、全部头文件，采用的是静态连接的方式，它的clang是较为独立的文件（它会依赖libc++，因此称为较为独立）。
+
+平时编译Pass时，需要使用cmake并且导入各种cmake相关的环境，通常写如下的配置文件
+
+https://github.com/abenkhadra/llvm-pass-tutorial/blob/master/CMakeLists.txt
+
+```c
+cmake_minimum_required(VERSION 3.4)
+# we need LLVM_HOME in order not automatically set LLVM_DIR
+if(NOT DEFINED ENV{LLVM_HOME})
+    message(FATAL_ERROR "$LLVM_HOME is not defined")
+else ()
+    set(ENV{LLVM_DIR} $ENV{LLVM_HOME}/lib/cmake/llvm)
+endif()
+find_package(LLVM REQUIRED CONFIG)
+add_definitions(${LLVM_DEFINITIONS})
+include_directories(${LLVM_INCLUDE_DIRS})
+link_directories(${LLVM_LIBRARY_DIRS})
+add_subdirectory(skeleton)  # Use your pass name here.
+```
+
+幸运的是，NDK中的 lib/cmake/llvm 还在，里面的cmake文件都是原汁原味的的。
+
+不幸的是，由于AOSP在编译toolchain时设置了 defines['LLVM_LIBDIR_SUFFIX'] = '64' ，导致find_package的路径应该是 lib64/cmake/llvm ，需要稍加修改。
+
+之后进行
+
+mkdir b;cd b;cmake ..
+ 
+mkdir b;cd b;cmake ..
+
+
+
+
 
 # llvm 错误相关
 
@@ -30,7 +80,7 @@ __ZN4llvm24DisableABIBreakingChecksE
 原因：
 
 开启LLVM_ENABLE_ABI_BREAKING_CHECKS后，符号为__ZN4llvm23EnableABIBreakingChecksE，关闭LLVM_ENABLE_ABI_BREAKING_CHECKS后，符号为__ZN4llvm24DisableABIBreakingChecksE。二者就差几个字符，很容易眼花被看错，让 clang 和 pass保持一致就行。
-
+```c
 namespace llvm {
   #if LLVM_ENABLE_ABI_BREAKING_CHECKS
   extern int EnableABIBreakingChecks;
@@ -51,6 +101,7 @@ namespace llvm {
   __attribute__((weak, visibility ("hidden"))) int *VerifyDisableABIBreakingChecks = &DisableABIBreakingChecks;
   #endif
 }
+```
 解决方案：
 编译时主动设置或者清空该宏定义。
 
