@@ -1,5 +1,15 @@
 # ollvm/armariris/hikari port to llvm10 in 2020
 
+现在代码保护技术很多是在 llvm 上实现的，例如 ollvm 和 hikari ，作者给出的实现是将源码混杂在 llvm中，这样做非常不优雅。近来越来越多安全工作者都开始接触和研究基于 llvm的代码保护，工欲善其事必先利其器，在编译、运行均是本机的环境下，不会出问题，因此本文介绍的是，如何优雅地在NDK中加载pass。
+
+安卓开发者使用混淆技术来保护native代码时，一般有两种选择：
+
+第一个选择是获得git上 ollvm或 hikari的代码，编译后，替换掉NDK中原先的toolchain。
+
+这是最不优雅的方式，因为维护起来很麻烦，因为需要编译整个llvm工程，并且对NDK有侵入性，无法保证修改前和修改后NDK的功能不发生变化。
+
+第二个选择是，编译llvm工程，替换掉NDK中原先的toolchain，并且在相同环境下，移植 ollvm或 hikari为独立的plugin，（移植方案我的github里有写https://github.com/LeadroyaL/llvm-pass-tutorial）用编译为插件的形式，动态加载插件。
+
 
 # llvm 错误相关
 
